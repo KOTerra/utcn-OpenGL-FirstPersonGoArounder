@@ -21,7 +21,7 @@
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "Window.h"
+#include "Window.h" 
 #include "Shader.hpp"
 #include "Model3D.hpp"
 #include "Camera.hpp"
@@ -29,12 +29,10 @@
 #include <iostream>
 #include <string>
 
-#define MAX_LIGHTS 19
+#define MAX_LIGHTS 100
 
-int glWindowWidth = 1280;
-int glWindowHeight = 720;
-int retina_width, retina_height;
-GLFWwindow* glWindow = NULL;
+// Global Window object
+gps::Window myWindow;
 
 glm::mat4 model;
 GLuint modelLoc;
@@ -45,19 +43,17 @@ GLuint projectionLoc;
 glm::mat3 normalMatrix;
 GLuint normalMatrixLoc;
 
-// Struct to hold world-space light data
 struct PointLight {
-    glm::vec3 position; // World Space
+    glm::vec3 position;
     glm::vec3 color;
     float constant;
     float linear;
     float quadratic;
 };
 
-// Array of lights
 PointLight pointLights[MAX_LIGHTS];
 
-// Struct to hold uniform locations for one light
+
 struct PointLightLocs {
     GLuint position;
     GLuint color;
@@ -66,8 +62,9 @@ struct PointLightLocs {
     GLuint quadratic;
 };
 
-// Array of uniform locations
 PointLightLocs pointLightLocs[MAX_LIGHTS];
+
+int lightsCount = 0;
 
 
 gps::Camera myCamera(
@@ -123,8 +120,8 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
 
 
 bool firstMouse = true;
-double lastX = glWindowWidth / 2.0;
-double lastY = glWindowHeight / 2.0;
+double lastX = 640;
+double lastY = 360;
 float yaw = -90.0f;
 float pitch = 0.0f;
 
@@ -158,20 +155,25 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
     normalMatrix = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
 
-    // --- CHANGED ---
     // Update only the scene lights (starting from i = 1)
     // Light 0 is the headlight and stays at (0,0,0) in Eye Space
     for (int i = 1; i < MAX_LIGHTS; i++) {
         glm::vec3 lightPosEye = glm::vec3(view * glm::vec4(pointLights[i].position, 1.0f));
         glUniform3fv(pointLightLocs[i].position, 1, glm::value_ptr(lightPosEye));
     }
-    // --- END CHANGE ---
 }
 
 void windowResizeCallback(GLFWwindow* window, int width, int height) {
     fprintf(stdout, "window resized to width: %d , and height: %d\n", width, height);
-    glViewport(0, 0, width, height);
+
+    int retina_width, retina_height;
     glfwGetFramebufferSize(window, &retina_width, &retina_height);
+
+
+    myWindow.setWindowDimensions(WindowDimensions{retina_width, retina_height});
+
+    // Set the viewport to the new retina size
+    glViewport(0, 0, retina_width, retina_height);
 
     int newWidth, newHeight;
     glfwGetWindowSize(window, &newWidth, &newHeight);
@@ -180,7 +182,7 @@ void windowResizeCallback(GLFWwindow* window, int width, int height) {
     lastX = newWidth / 2.0;
     lastY = newHeight / 2.0;
 
-    // Using 45.0f from initUniforms, not 105.0f
+    // Recalculate projection matrix
     projection = glm::perspective(
         glm::radians(45.0f),
         static_cast<float>(retina_width) / static_cast<float>(retina_height),
@@ -242,61 +244,21 @@ void processMovement() {
         normalMatrix = glm::mat3(glm::inverseTranspose(view * model));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
 
-        // --- CHANGED ---
         // Update only the scene lights (starting from i = 1)
         for (int i = 1; i < MAX_LIGHTS; i++) {
             glm::vec3 lightPosEye = glm::vec3(view * glm::vec4(pointLights[i].position, 1.0f));
             glUniform3fv(pointLightLocs[i].position, 1, glm::value_ptr(lightPosEye));
         }
-        // --- END CHANGE ---
     }
 }
 
-bool initOpenGLWindow() {
-    if (!glfwInit()) {
-        fprintf(stderr, "ERROR: could not start GLFW3\n");
-        return false;
-    }
-
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
-    glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_TRUE);
-    glfwWindowHint(GLFW_SAMPLES, 4);
-
-    glWindow = glfwCreateWindow(glWindowWidth, glWindowHeight, "OpenGL Shader Example", NULL, NULL);
-    if (!glWindow) {
-        fprintf(stderr, "ERROR: could not open window with GLFW3\n");
-        glfwTerminate();
-        return false;
-    }
-
-    glfwSetWindowSizeCallback(glWindow, windowResizeCallback);
-    glfwSetKeyCallback(glWindow, keyboardCallback);
-    glfwSetCursorPosCallback(glWindow, mouseCallback);
-    glfwSetInputMode(glWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    glfwMakeContextCurrent(glWindow);
-    glfwSwapInterval(1);
-
-#if not defined (__APPLE__)
-    glewExperimental = GL_TRUE;
-    glewInit();
-#endif
-
-    const GLubyte* renderer = glGetString(GL_RENDERER);
-    const GLubyte* version = glGetString(GL_VERSION);
-    printf("Renderer: %s\n", renderer);
-    printf("OpenGL version supported %s\n", version);
-
-    glfwGetFramebufferSize(glWindow, &retina_width, &retina_height);
-    return true;
-}
 
 void initOpenGLState() {
     glClearColor(0.3f, 0.3f, 0.3f, 1.0);
-    glViewport(0, 0, retina_width, retina_height);
+
+    WindowDimensions dims = myWindow.getWindowDimensions();
+    glViewport(0, 0, dims.width, dims.height);
+
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_CULL_FACE);
@@ -304,6 +266,7 @@ void initOpenGLState() {
     glFrontFace(GL_CCW);
     glEnable(GL_FRAMEBUFFER_SRGB);
 }
+
 
 void initObjects() {
     myModel.LoadModel("models/scene/craioveclipsa.obj", "models/scene/");
@@ -313,6 +276,21 @@ void initShaders() {
     myCustomShader.loadShader("shaders/shaderStart.vert", "shaders/shaderStart.frag");
     myCustomShader.useShaderProgram();
 }
+
+void addLight(glm::vec3 pos, glm::vec3 color, float constant, float linear, float quadratic) {
+    // Safety check
+    if (lightsCount >= MAX_LIGHTS) {
+        std::cout << "Warning: Exceeded MAX_LIGHTS. Light not added." << std::endl;
+        return;
+    }
+
+    pointLights[lightsCount].position = pos;
+    pointLights[lightsCount].color = color;
+    pointLights[lightsCount].constant = constant;
+    pointLights[lightsCount].linear = linear;
+    pointLights[lightsCount++].quadratic = quadratic;
+}
+
 
 void initUniforms() {
     model = glm::mat4(1.0f);
@@ -327,81 +305,48 @@ void initUniforms() {
     normalMatrixLoc = glGetUniformLocation(myCustomShader.shaderProgram, "normalMatrix");
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
 
-    projection = glm::perspective(glm::radians(45.0f), (float)retina_width / (float)retina_height, 0.1f, 1000.0f);
+
+    WindowDimensions dims = myWindow.getWindowDimensions();
+    projection = glm::perspective(glm::radians(45.0f), (float)dims.width / (float)dims.height, 0.1f, 1000.0f);
     projectionLoc = glGetUniformLocation(myCustomShader.shaderProgram, "projection");
     glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-    // --- CHANGED ---
+    lightsCount = 0;
+
     // Light 0: Headlight (White)
-    // Its world position is irrelevant, we'll set its eye position to (0,0,0)
-    pointLights[0].position = glm::vec3(0.0f, 0.0f, 0.0f);
-    pointLights[0].color = glm::vec3(1.0f, 1.0f, 1.0f); // White
-    pointLights[0].constant = 1.0f;
-    pointLights[0].linear = 0.09f;
-    pointLights[0].quadratic = 0.032f;
+    addLight(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, 0.09f, 0.032f);
 
     // Light 1: Scene Light (Red)
-    pointLights[1].position = glm::vec3(20.0f, 20.0f, 0.0f); // World Space
-    pointLights[1].color = glm::vec3(1.0f, 0.0f, 0.0f); // Red
-    pointLights[1].constant = 1.0f;
-    pointLights[1].linear = 0.09f;
-    pointLights[1].quadratic = 0.032f;
+    addLight(glm::vec3(20.0f, 20.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 1.0f, 0.09f, 0.032f);
 
     // Light 2: Scene Light (Blue)
-    pointLights[2].position = glm::vec3(-13.2f, 43.0f, .2f); // World Space
-    pointLights[2].color = glm::vec3(0.0f, 0.0f, 1.0f); // Blue
-    pointLights[2].constant = 1.0f;
-    pointLights[2].linear = 0.09f;
-    pointLights[2].quadratic = 0.032f;
+    addLight(glm::vec3(-13.2f, 43.0f, .2f), glm::vec3(0.0f, 0.0f, 1.0f), 1.0f, 0.09f, 0.032f);
 
     // Light 3: Scene Light (Green)
-    pointLights[3].position = glm::vec3(-20.0f, 20.0f, 0.0f); // World Space
-    pointLights[3].color = glm::vec3(0.0f, 1.0f, 0.0f); // Green
-    pointLights[3].constant = 1.0f;
-    pointLights[3].linear = 0.09f;
-    pointLights[3].quadratic = 0.032f;
+    addLight(glm::vec3(-20.0f, 20.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 1.0f, 0.09f, 0.032f);
+
+    // Light 4
+    addLight(glm::vec3(80.0f, 80.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 1.0f, 0.05f, 0.032f);
+
+    // Light 5
+    addLight(glm::vec3(0.0f, 80.0f, -80.0f), glm::vec3(0.0f, 0.0f, 1.0f), 1.0f, 0.05f, 0.032f);
+
+    // Light 6
+    addLight(glm::vec3(-80.0f, 80.0f, 0.0f), glm::vec3(0.7f, .3f, 0.1f), 1.0f, 0.05f, 0.032f);
 
 
-    pointLights[4].position = glm::vec3(80.0f, 80.0f, 0.0f); // World Space
-    pointLights[4].color = glm::vec3(1.0f, 0.0f, 0.0f); // Red
-    pointLights[4].constant = 1.0f;
-    pointLights[4].linear = 0.05f;
-    pointLights[4].quadratic = 0.032f;
-
-    pointLights[5].position = glm::vec3(0.0f, 80.0f, -80.0f); // World Space
-    pointLights[5].color = glm::vec3(0.0f, 0.0f, 1.0f); // Blue
-    pointLights[5].constant = 1.0f;
-    pointLights[5].linear = 0.05f;
-    pointLights[5].quadratic = 0.032f;
-
-    pointLights[6].position = glm::vec3(-80.0f, 80.0f, 0.0f); // World Space
-    pointLights[6].color = glm::vec3(0.7f, .3f, 0.1f); // Orange
-    pointLights[6].constant = 1.0f;
-    pointLights[6].linear = 0.05f;
-    pointLights[6].quadratic = 0.032f;
-
-
+    // Add the 12 blue lights
     const int numLights = 12;
     float y_positions[numLights] = {43.0f, 46.0f, 49.0f, 52.0f, 55.0f, 58.0f, 61.0f, 64.0f, 67.0f, 70.f, 73.f, 76.f};
     float z_positions[numLights] = {0.2f, 4.0f, 7.8f, 11.0f, 14.8f, 17.0f, 20.0f, 23.8f, 27.0f, 30.8f, 34.f, 37.8f};
 
     for (int i = 0; i < numLights; i++) {
-        int lightIndex = i + 7;
-
-        // Set the unique position
-        pointLights[lightIndex].position = glm::vec3(
-            -13.2f, // Constant X
-            y_positions[i], // Y from our array
-            z_positions[i] // Z from our array
+        addLight(
+            glm::vec3(-13.2f, y_positions[i], z_positions[i]), // position
+            glm::vec3(0.0f, 0.0f, 1.0f), // color (Blue)
+            1.0f, 0.09f, 0.032f // attenuation
         );
-
-        // Set the common properties
-        pointLights[lightIndex].color = glm::vec3(0.0f, 0.0f, 1.0f); // Blue
-        pointLights[lightIndex].constant = 1.0f;
-        pointLights[lightIndex].linear = 0.09f;
-        pointLights[lightIndex].quadratic = 0.032f;
     }
-
 
     for (int i = 0; i < MAX_LIGHTS; i++) {
         std::string i_str = std::to_string(i);
@@ -416,62 +361,76 @@ void initUniforms() {
         pointLightLocs[i].constant = glGetUniformLocation(myCustomShader.shaderProgram, constName.c_str());
         pointLightLocs[i].linear = glGetUniformLocation(myCustomShader.shaderProgram, linName.c_str());
         pointLightLocs[i].quadratic = glGetUniformLocation(myCustomShader.shaderProgram, quadName.c_str());
+    }
 
-        // Send data that doesn't change every frame
+    for (int i = 0; i < lightsCount; i++) {
         glUniform3fv(pointLightLocs[i].color, 1, glm::value_ptr(pointLights[i].color));
         glUniform1f(pointLightLocs[i].constant, pointLights[i].constant);
         glUniform1f(pointLightLocs[i].linear, pointLights[i].linear);
         glUniform1f(pointLightLocs[i].quadratic, pointLights[i].quadratic);
 
-        // Send the initial eye-space position
         if (i == 0) {
-            // Light 0 is the headlight, fixed at (0,0,0) in Eye Space
             glUniform3fv(pointLightLocs[0].position, 1, glm::value_ptr(glm::vec3(0.0f)));
         }
         else {
-            // Other lights are in the scene, transform their world pos to eye pos
             glm::vec3 lightPosEye = glm::vec3(view * glm::vec4(pointLights[i].position, 1.0f));
             glUniform3fv(pointLightLocs[i].position, 1, glm::value_ptr(lightPosEye));
         }
     }
-    // --- END CHANGE ---
+
+    // Send the ACTUAL number of defined lights to the shader
+    GLuint numLightsLoc = glGetUniformLocation(myCustomShader.shaderProgram, "numLights");
+    glUniform1i(numLightsLoc, lightsCount); // Send 19
 }
+
 
 void renderScene() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     myModel.Draw(myCustomShader);
 }
 
-void cleanup() {
-    glfwDestroyWindow(glWindow);
-    glfwTerminate();
-}
 
-int main(int argc, const char* argv[]) {
-    if (!initOpenGLWindow()) {
-        glfwTerminate();
-        return 1;
-    }
-
-    initOpenGLState();
-    initObjects();
-    initShaders();
-    initUniforms(); // Must be after initShaders
-
-    int newWidth, newHeight;
-    glfwGetWindowSize(glWindow, &newWidth, &newHeight);
-    glfwSetCursorPos(glWindow, newWidth / 2.0, newHeight / 2.0);
-    lastX = newWidth / 2.0;
-    lastY = newHeight / 2.0;
-
-    while (!glfwWindowShouldClose(glWindow)) {
+void mainLoop() {
+    while (!glfwWindowShouldClose(myWindow.getWindow())) {
         processMovement();
         renderScene();
 
         glfwPollEvents();
-        glfwSwapBuffers(glWindow);
+        glfwSwapBuffers(myWindow.getWindow());
+    }
+}
+
+int main(int argc, const char* argv[]) {
+    try {
+        myWindow.Create(1280, 720, "Bulevardul Oltenia 34");
+    }
+    catch (const std::runtime_error& e) {
+        std::cerr << "ERROR: " << e.what() << std::endl;
+        glfwTerminate();
+        return 1;
     }
 
-    cleanup();
+    glfwSetWindowSizeCallback(myWindow.getWindow(), windowResizeCallback);
+    glfwSetKeyCallback(myWindow.getWindow(), keyboardCallback);
+    glfwSetCursorPosCallback(myWindow.getWindow(), mouseCallback);
+    glfwSetInputMode(myWindow.getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+    initOpenGLState();
+    initObjects();
+    initShaders();
+    initUniforms();
+
+    // initial mouse position
+    int newWidth, newHeight;
+    glfwGetWindowSize(myWindow.getWindow(), &newWidth, &newHeight);
+    glfwSetCursorPos(myWindow.getWindow(), newWidth / 2.0, newHeight / 2.0);
+    lastX = newWidth / 2.0;
+    lastY = newHeight / 2.0;
+
+
+    mainLoop();
+
+    myWindow.Delete();
+
     return 0;
 }

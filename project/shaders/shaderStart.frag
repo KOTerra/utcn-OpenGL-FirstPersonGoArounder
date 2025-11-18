@@ -6,7 +6,7 @@ in vec2 fragTexCoords;
 
 out vec4 fColor;
 
-#define MAX_LIGHTS 19
+#define MAX_LIGHTS 100// <-- KEEP THIS (defines array size)
 
 struct PointLight {
     vec3 position;
@@ -21,6 +21,8 @@ uniform PointLight lights[MAX_LIGHTS];
 
 uniform sampler2D diffuseTexture;
 uniform sampler2D specularTexture;
+
+uniform int numLights;// <-- ADD THIS
 
 vec3 ambient;
 float ambientStrength = 0.2f;
@@ -43,13 +45,14 @@ void computeLightComponents()
     diffuse = vec3(0.0f);
     specular = vec3(0.0f);
 
-    for (int i = 0; i < MAX_LIGHTS; i++)
+    // VVV CHANGE THIS LOOP VVV
+    for (int i = 0; i < numLights; i++)// Use the new uniform
     {
+        // ^^^ CHANGE THIS LOOP ^^^
         vec3 lightDirN = normalize(lights[i].position - fPosEye.xyz);
         float dist = length(lights[i].position - fPosEye.xyz);
 
         float att = 1.0f / (lights[i].constant + lights[i].linear * dist + lights[i].quadratic * (dist * dist));
-
 
         ambient += (att * ambientStrength * lights[i].color) * texColor;
 
@@ -67,7 +70,7 @@ void main()
 {
     computeLightComponents();
 
-    vec3 baseColor = vec3(0.9f, 0.35f, 0.25f); // orange
+    vec3 baseColor = vec3(0.9f, 0.35f, 0.25f);// orange
 
     ambient *= baseColor;
     diffuse *= baseColor;
