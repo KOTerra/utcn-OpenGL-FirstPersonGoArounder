@@ -13,7 +13,9 @@ add_executable(${PROJECT_NAME} main.cpp
         tiny_obj_loader.cpp
         stb_image.cpp
         Mesh.cpp
-        Window.cpp)
+        Window.cpp
+        SkyBox.cpp
+)
 
 # --- macOS ---
 if (APPLE)

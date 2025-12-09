@@ -29,6 +29,8 @@
 #include <iostream>
 #include <string>
 
+#include "SkyBox.hpp"
+
 #define MAX_LIGHTS 200
 
 // Global Window object
@@ -36,12 +38,16 @@ gps::Window myWindow;
 
 glm::mat4 model;
 GLuint modelLoc;
+
 glm::mat4 view;
 GLuint viewLoc;
 glm::mat4 projection;
 GLuint projectionLoc;
 glm::mat3 normalMatrix;
 GLuint normalMatrixLoc;
+
+gps::SkyBox mySkyBox;
+gps::Shader skyboxShader;
 
 struct PointLight {
     glm::vec3 position;
@@ -291,6 +297,20 @@ void initObjects() {
 void initShaders() {
     myCustomShader.loadShader("shaders/shaderStart.vert", "shaders/shaderStart.frag");
     myCustomShader.useShaderProgram();
+
+    skyboxShader.loadShader("shaders/skyboxShader.vert", "shaders/skyboxShader.frag");
+    skyboxShader.useShaderProgram();
+}
+
+void initSkyBox() {
+    std::vector<const GLchar*> skyBoxFaces;
+    skyBoxFaces.push_back("skybox/redplanet_rt.tga");
+    skyBoxFaces.push_back("skybox/redplanet_lf.tga");
+    skyBoxFaces.push_back("skybox/redplanet_up.tga");
+    skyBoxFaces.push_back("skybox/redplanet_dn.tga");
+    skyBoxFaces.push_back("skybox/redplanet_bk.tga");
+    skyBoxFaces.push_back("skybox/redplanet_ft.tga");
+    mySkyBox.Load(skyBoxFaces);
 }
 
 void addLight(glm::vec3 pos, glm::vec3 color, float constant, float linear, float quadratic) {
@@ -309,6 +329,8 @@ void addLight(glm::vec3 pos, glm::vec3 color, float constant, float linear, floa
 
 
 void initUniforms() {
+    myCustomShader.useShaderProgram();
+
     model = glm::mat4(1.0f);
     modelLoc = glGetUniformLocation(myCustomShader.shaderProgram, "model");
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
@@ -330,7 +352,7 @@ void initUniforms() {
     lightsCount = 0;
 
     // Light 0: Headlight (White)
-    addLight(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, 0.09f, 0.032f);
+    addLight(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, 0.009f, 0.0032f);
     //
 
     // Light 1: Scene Light (Red)
@@ -425,7 +447,23 @@ void initUniforms() {
 
 void renderScene() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    myCustomShader.useShaderProgram();
+
+    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
+
+    normalMatrix = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
+
+    for (int i = 1; i < lightsCount; i++) { // Assuming light 0 is headlight fixed to camera
+        glm::vec3 lightPosEye = glm::vec3(view * glm::vec4(pointLights[i].position, 1.0f));
+        glUniform3fv(pointLightLocs[i].position, 1, glm::value_ptr(lightPosEye));
+    }
+
     myModel.Draw(myCustomShader);
+
+    mySkyBox.Draw(skyboxShader, view, projection);
 }
 
 
@@ -458,6 +496,7 @@ int main(int argc, const char* argv[]) {
     initObjects();
     initShaders();
     initUniforms();
+    initSkyBox();
 
     // initial mouse position
     int newWidth, newHeight;
