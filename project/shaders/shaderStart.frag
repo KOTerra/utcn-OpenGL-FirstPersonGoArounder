@@ -1,12 +1,12 @@
 #version 410 core
 
 in vec3 fNormal;
-in vec4 fPosEye;
+in vec4 fPosEye;// Fragment position in Eye Space
 in vec2 fragTexCoords;
 
 out vec4 fColor;
 
-#define MAX_LIGHTS 200// <-- KEEP THIS (defines array size)
+#define MAX_LIGHTS 200
 
 struct PointLight {
     vec3 position;
@@ -22,7 +22,10 @@ uniform PointLight lights[MAX_LIGHTS];
 uniform sampler2D diffuseTexture;
 uniform sampler2D specularTexture;
 
-uniform int numLights;// <-- ADD THIS
+uniform int numLights;
+
+uniform float fogDensity = 0.05f;
+uniform vec4 fogColor = vec4(0.4f, 0.015f, 0.01f, 1.0f);
 
 vec3 ambient;
 float ambientStrength = 0.2f;
@@ -30,6 +33,16 @@ vec3 diffuse;
 vec3 specular;
 float specularStrength = 0.5f;
 float shininess = 32.0f;
+
+float computeFog()
+{
+    float fragmentDistance = length(fPosEye.xyz);
+
+    // sq exp
+    float fogFactor = exp(-pow(fragmentDistance * fogDensity, 2));
+
+    return clamp(fogFactor, 0.0f, 1.0f);
+}
 
 void computeLightComponents()
 {
@@ -45,10 +58,8 @@ void computeLightComponents()
     diffuse = vec3(0.0f);
     specular = vec3(0.0f);
 
-    // VVV CHANGE THIS LOOP VVV
-    for (int i = 0; i < numLights; i++)// Use the new uniform
+    for (int i = 0; i < numLights; i++)
     {
-        // ^^^ CHANGE THIS LOOP ^^^
         vec3 lightDirN = normalize(lights[i].position - fPosEye.xyz);
         float dist = length(lights[i].position - fPosEye.xyz);
 
@@ -70,7 +81,7 @@ void main()
 {
     computeLightComponents();
 
-    vec3 baseColor = vec3(0.9f, 0.35f, 0.25f);// orange
+    vec3 baseColor = vec3(0.9f, 0.35f, 0.25f);
 
     ambient *= baseColor;
     diffuse *= baseColor;
@@ -78,5 +89,8 @@ void main()
 
     vec3 color = min((ambient + diffuse) + specular, 1.0f);
 
-    fColor = vec4(color, 1.0f);
+    float fogFactor = computeFog();
+    fColor = mix(fogColor, vec4(color, 1.0f), fogFactor);
+
+    // fColor = fogColor * (1.0f - fogFactor) + vec4(color, 1.0f) * fogFactor;
 }

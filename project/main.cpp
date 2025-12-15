@@ -352,7 +352,7 @@ void initUniforms() {
     lightsCount = 0;
 
     // Light 0: Headlight (White)
-    addLight(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, 0.009f, 0.0032f);
+    addLight(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, 0.09f, 0.032f);
     //
 
     // Light 1: Scene Light (Red)
