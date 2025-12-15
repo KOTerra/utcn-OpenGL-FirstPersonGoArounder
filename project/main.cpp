@@ -25,11 +25,12 @@
 #include "Shader.hpp"
 #include "Model3D.hpp"
 #include "Camera.hpp"
+#include "SkyBox.hpp"
 
 #include <iostream>
 #include <string>
-
-#include "SkyBox.hpp"
+#include <vector>
+#include "stb_image.h"
 
 #define MAX_LIGHTS 200
 
@@ -48,6 +49,11 @@ GLuint normalMatrixLoc;
 
 gps::SkyBox mySkyBox;
 gps::Shader skyboxShader;
+
+gps::Shader rainShader;
+GLuint rainVAO, rainVBO;
+GLuint rainTexture;
+bool rainEnabled = false;
 
 struct PointLight {
     glm::vec3 position;
@@ -114,6 +120,88 @@ GLenum glCheckError_(const char* file, int line) {
 
 #define glCheckError() glCheckError_(__FILE__, __LINE__)
 
+// Rain
+GLuint loadTexture(const char* path) {
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+
+    int width, height, nrComponents;
+    unsigned char* data = stbi_load(path, &width, &height, &nrComponents, 0);
+    if (data) {
+        GLenum format;
+        if (nrComponents == 1) format = GL_RED;
+        else if (nrComponents == 3) format = GL_RGB;
+        else if (nrComponents == 4) format = GL_RGBA;
+
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        // Set wrapping to REPEAT so the rain scrolls seamlessly
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        stbi_image_free(data);
+    }
+    else {
+        std::cout << "Texture failed to load at path: " << path << std::endl;
+        stbi_image_free(data);
+    }
+
+    return textureID;
+}
+
+void initRain() {
+    rainShader.loadShader("shaders/rain.vert", "shaders/rain.frag");
+
+    rainTexture = loadTexture("textures/rain2.png");
+
+    float quadVertices[] = {
+            -1.0f, 1.0f, 0.0f, 1.0f,
+            -1.0f, -1.0f, 0.0f, 0.0f,
+            1.0f, -1.0f, 1.0f, 0.0f,
+
+            -1.0f, 1.0f, 0.0f, 1.0f,
+            1.0f, -1.0f, 1.0f, 0.0f,
+            1.0f, 1.0f, 1.0f, 1.0f
+        };
+
+    glGenVertexArrays(1, &rainVAO);
+    glGenBuffers(1, &rainVBO);
+    glBindVertexArray(rainVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, rainVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+}
+
+void drawRain() {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_DEPTH_TEST);
+
+    rainShader.useShaderProgram();
+
+    // Pass time to shader
+    glUniform1f(glGetUniformLocation(rainShader.shaderProgram, "time"), (float)glfwGetTime());
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, rainTexture);
+    glUniform1i(glGetUniformLocation(rainShader.shaderProgram, "rainTexture"), 0);
+
+    glBindVertexArray(rainVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // Reset state
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+}
+
 
 void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mode) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
@@ -133,6 +221,10 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
             glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
             break;
         }
+    }
+
+    if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+        rainEnabled = !rainEnabled;
     }
 
     if (key >= 0 && key < 1024) {
@@ -279,11 +371,7 @@ void processMovement() {
 
     if (pressedKeys[GLFW_KEY_P]) {
         glm::mat4 currentView = myCamera.getViewMatrix();
-
-
         glm::mat4 inverseView = glm::inverse(currentView);
-
-
         glm::vec3 worldPos = glm::vec3(inverseView[3]);
 
         std::cout << "Camera World Coords: X="
@@ -333,7 +421,6 @@ void initSkyBox() {
 }
 
 void addLight(glm::vec3 pos, glm::vec3 color, float constant, float linear, float quadratic) {
-    // Safety check
     if (lightsCount >= MAX_LIGHTS) {
         std::cout << "Warning: Exceeded MAX_LIGHTS. Light not added." << std::endl;
         return;
@@ -372,7 +459,6 @@ void initUniforms() {
 
     // Light 0: Headlight (White)
     addLight(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, 0.09f, 0.032f);
-    //
 
     // Light 1: Scene Light (Red)
     addLight(glm::vec3(20.0f, 20.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 1.0f, 0.09f, 0.032f);
@@ -460,7 +546,7 @@ void initUniforms() {
 
     // Send the ACTUAL number of defined lights to the shader
     GLuint numLightsLoc = glGetUniformLocation(myCustomShader.shaderProgram, "numLights");
-    glUniform1i(numLightsLoc, lightsCount); // Send 19
+    glUniform1i(numLightsLoc, lightsCount);
 }
 
 
@@ -475,7 +561,7 @@ void renderScene() {
     normalMatrix = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
 
-    for (int i = 1; i < lightsCount; i++) { // Assuming light 0 is headlight fixed to camera
+    for (int i = 1; i < lightsCount; i++) {
         glm::vec3 lightPosEye = glm::vec3(view * glm::vec4(pointLights[i].position, 1.0f));
         glUniform3fv(pointLightLocs[i].position, 1, glm::value_ptr(lightPosEye));
     }
@@ -483,6 +569,10 @@ void renderScene() {
     myModel.Draw(myCustomShader);
 
     mySkyBox.Draw(skyboxShader, view, projection);
+
+    if (rainEnabled) {
+        drawRain();
+    }
 }
 
 
@@ -516,6 +606,8 @@ int main(int argc, const char* argv[]) {
     initShaders();
     initUniforms();
     initSkyBox();
+
+    initRain();
 
     // initial mouse position
     int newWidth, newHeight;

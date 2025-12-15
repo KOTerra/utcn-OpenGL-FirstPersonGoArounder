@@ -24,7 +24,7 @@ uniform sampler2D specularTexture;
 
 uniform int numLights;
 
-uniform float fogDensity = 0.05f;
+uniform float fogDensity = 0.003f;
 uniform vec4 fogColor = vec4(0.4f, 0.015f, 0.01f, 1.0f);
 
 vec3 ambient;
