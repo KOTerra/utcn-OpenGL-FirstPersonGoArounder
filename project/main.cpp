@@ -88,6 +88,9 @@ float angleY = 0.0f;
 gps::Model3D myModel;
 gps::Shader myCustomShader;
 
+// 0 = Solid  1 = Wireframe  2 =  Point
+int glRenderMode = 0;
+
 GLenum glCheckError_(const char* file, int line) {
     GLenum errorCode;
     while ((errorCode = glGetError()) != GL_NO_ERROR) {
@@ -115,6 +118,22 @@ GLenum glCheckError_(const char* file, int line) {
 void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mode) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         glfwSetWindowShouldClose(window, GL_TRUE);
+
+    if (key == GLFW_KEY_J && action == GLFW_PRESS) {
+        glRenderMode = (glRenderMode + 1) % 3;
+
+        switch (glRenderMode) {
+        case 0:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            break;
+        case 1:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            break;
+        case 2:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+            break;
+        }
+    }
 
     if (key >= 0 && key < 1024) {
         if (action == GLFW_PRESS)
