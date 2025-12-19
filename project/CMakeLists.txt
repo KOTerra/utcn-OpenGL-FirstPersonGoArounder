@@ -15,6 +15,7 @@ add_executable(${PROJECT_NAME} main.cpp
         Mesh.cpp
         Window.cpp
         SkyBox.cpp
+        Scene.cpp
 )
 
 # --- macOS ---
