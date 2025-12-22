@@ -27,13 +27,13 @@
 #include "Camera.hpp"
 #include "SkyBox.hpp"
 #include "Scene.hpp"
+#include "Player.hpp"
 
 #include <iostream>
 #include <string>
 #include <vector>
 #include "stb_image.h"
 
-// Global Window object
 gps::Window myWindow;
 
 glm::mat4 model;
@@ -46,6 +46,21 @@ GLuint projectionLoc;
 glm::mat3 normalMatrix;
 GLuint normalMatrixLoc;
 
+const unsigned int SHADOW_WIDTH = 2048;
+const unsigned int SHADOW_HEIGHT = 2048;
+
+GLuint shadowMapFBO;
+GLuint depthMapTexture;
+bool showDepthMap = false;
+
+gps::Model3D screenQuad;
+gps::Shader screenQuadShader;
+gps::Shader depthMapShader;
+
+glm::vec3 lightDir;
+glm::mat4 lightRotation;
+GLfloat lightAngle;
+
 gps::SkyBox mySkyBox;
 gps::Shader skyboxShader;
 
@@ -54,8 +69,8 @@ GLuint rainVAO, rainVBO;
 GLuint rainTexture;
 bool rainEnabled = false;
 
-// Scene object
 Scene myScene;
+Player myPlayer;
 
 gps::Camera myCamera(
     glm::vec3(0.0f, 0.0f, 2.5f),
@@ -71,7 +86,6 @@ float angleY = 0.0f;
 
 gps::Shader myCustomShader;
 
-// 0 = Solid  1 = Wireframe  2 =  Point
 int glRenderMode = 0;
 
 GLenum glCheckError_(const char* file, int line) {
@@ -97,7 +111,6 @@ GLenum glCheckError_(const char* file, int line) {
 
 #define glCheckError() glCheckError_(__FILE__, __LINE__)
 
-// Rain
 GLuint loadTexture(const char* path) {
     GLuint textureID;
     glGenTextures(1, &textureID);
@@ -181,25 +194,12 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         glfwSetWindowShouldClose(window, GL_TRUE);
 
-    if (key == GLFW_KEY_J && action == GLFW_PRESS) {
-        glRenderMode = (glRenderMode + 1) % 3;
-
-        switch (glRenderMode) {
-        case 0:
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            break;
-        case 1:
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            break;
-        case 2:
-            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
-            break;
-        }
-    }
-
     if (key == GLFW_KEY_R && action == GLFW_PRESS) {
         rainEnabled = !rainEnabled;
     }
+
+    if (key == GLFW_KEY_M && action == GLFW_PRESS)
+        showDepthMap = !showDepthMap;
 
     if (key >= 0 && key < 1024) {
         if (action == GLFW_PRESS)
@@ -258,7 +258,9 @@ void windowResizeCallback(GLFWwindow* window, int width, int height) {
 
     myWindow.setWindowDimensions(WindowDimensions{retina_width, retina_height});
 
-    glViewport(0, 0, retina_width, retina_height);
+    if (!showDepthMap) {
+        glViewport(0, 0, retina_width, retina_height);
+    }
 
     int newWidth, newHeight;
     glfwGetWindowSize(window, &newWidth, &newHeight);
@@ -286,6 +288,13 @@ void processMovement() {
     }
     else {
         cameraSpeed = BASE_CAMERA_SPEED;
+    }
+
+    if (pressedKeys[GLFW_KEY_J]) {
+        myPlayer.Rotate(2.0f);
+    }
+    if (pressedKeys[GLFW_KEY_L]) {
+        myPlayer.Rotate(-2.0f);
     }
 
     if (pressedKeys[GLFW_KEY_Q]) {
@@ -358,12 +367,61 @@ void initOpenGLState() {
     glEnable(GL_FRAMEBUFFER_SRGB);
 }
 
+void initFBO() {
+    glGenFramebuffers(1, &shadowMapFBO);
+
+    glGenTextures(1, &depthMapTexture);
+
+    glBindTexture(GL_TEXTURE_2D, depthMapTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
+                 SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMapTexture,
+                           0);
+
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+glm::mat4 computeLightSpaceTrMatrix() {
+    glm::vec3 lightViewTarget = glm::vec3(13.57f, 13.88f, 1.11f);
+
+    glm::vec3 lightDirRotated = glm::inverseTranspose(glm::mat3(lightRotation)) * lightDir;
+
+    glm::vec3 lightEyePosition = lightViewTarget + glm::normalize(lightDirRotated) * 60.0f;
+
+    glm::mat4 lightView = glm::lookAt(lightEyePosition, lightViewTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+
+    const GLfloat near_plane = 0.1f, far_plane = 200.0f;
+    const GLfloat projection_size = 40.0f;
+
+    glm::mat4 lightProjection = glm::ortho(-projection_size, projection_size, -projection_size, projection_size,
+                                           near_plane, far_plane);
+    glm::mat4 lightSpaceTrMatrix = lightProjection * lightView;
+
+    return lightSpaceTrMatrix;
+}
+
 void initShaders() {
     myCustomShader.loadShader("shaders/shaderStart.vert", "shaders/shaderStart.frag");
     myCustomShader.useShaderProgram();
 
     skyboxShader.loadShader("shaders/skyboxShader.vert", "shaders/skyboxShader.frag");
     skyboxShader.useShaderProgram();
+
+    screenQuadShader.loadShader("shaders/screenQuad.vert", "shaders/screenQuad.frag");
+    screenQuadShader.useShaderProgram();
+
+    depthMapShader.loadShader("shaders/depthMap.vert", "shaders/depthMap.frag");
 }
 
 void initSkyBox() {
@@ -392,37 +450,99 @@ void initUniforms() {
     normalMatrixLoc = glGetUniformLocation(myCustomShader.shaderProgram, "normalMatrix");
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
 
-
     WindowDimensions dims = myWindow.getWindowDimensions();
     projection = glm::perspective(glm::radians(45.0f), (float)dims.width / (float)dims.height, 0.1f, 1000.0f);
     projectionLoc = glGetUniformLocation(myCustomShader.shaderProgram, "projection");
     glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
+    lightDir = glm::vec3(0.0f, 5.0f, 5.0f);
+    lightAngle = 0.0f;
+    lightRotation = glm::rotate(glm::mat4(1.0f), glm::radians(lightAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+
     myScene.InitLightUniforms(myCustomShader);
 }
 
-
-void renderScene() {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    myCustomShader.useShaderProgram();
-
-    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-
-    normalMatrix = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
-
-    myScene.UpdateLightPositions(myCustomShader, view);
-
-    myScene.Draw(myCustomShader);
-
-    mySkyBox.Draw(skyboxShader, view, projection);
-
-    if (rainEnabled) {
-        drawRain();
-    }
+void initObjects() {
+    myScene.Load();
+    myPlayer.Load("models/player/player.obj");
+    screenQuad.LoadModel("models/quad.obj");
 }
 
+void renderScene() {
+    depthMapShader.useShaderProgram();
+
+    glUniformMatrix4fv(glGetUniformLocation(depthMapShader.shaderProgram, "lightSpaceTrMatrix"),
+                       1,
+                       GL_FALSE,
+                       glm::value_ptr(computeLightSpaceTrMatrix()));
+
+    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    glCullFace(GL_FRONT);
+
+    glm::mat4 inverseView = glm::inverse(view);
+    glm::vec3 cameraPosition = glm::vec3(inverseView[3]);
+
+    myPlayer.Draw(depthMapShader, cameraPosition, view);
+    myScene.Draw(depthMapShader);
+
+    glCullFace(GL_BACK);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+    if (showDepthMap) {
+        WindowDimensions dims = myWindow.getWindowDimensions();
+        glViewport(0, 0, dims.width, dims.height);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        screenQuadShader.useShaderProgram();
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, depthMapTexture);
+        glUniform1i(glGetUniformLocation(screenQuadShader.shaderProgram, "depthMap"), 0);
+
+        glDisable(GL_DEPTH_TEST);
+        screenQuad.Draw(screenQuadShader);
+        glEnable(GL_DEPTH_TEST);
+    }
+    else {
+        WindowDimensions dims = myWindow.getWindowDimensions();
+        glViewport(0, 0, dims.width, dims.height);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        myCustomShader.useShaderProgram();
+
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
+        glUniformMatrix4fv(glGetUniformLocation(myCustomShader.shaderProgram, "lightSpaceTrMatrix"),
+                           1,
+                           GL_FALSE,
+                           glm::value_ptr(computeLightSpaceTrMatrix()));
+
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, depthMapTexture);
+        glUniform1i(glGetUniformLocation(myCustomShader.shaderProgram, "shadowMap"), 3);
+
+        inverseView = glm::inverse(view);
+        cameraPosition = glm::vec3(inverseView[3]);
+
+        myPlayer.Draw(myCustomShader, cameraPosition, view);
+
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+        normalMatrix = glm::mat3(glm::inverseTranspose(view * model));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
+
+        myScene.UpdateLightPositions(myCustomShader, view);
+        myScene.Draw(myCustomShader);
+
+        mySkyBox.Draw(skyboxShader, view, projection);
+
+        if (rainEnabled) {
+            drawRain();
+        }
+    }
+}
 
 void mainLoop() {
     while (!glfwWindowShouldClose(myWindow.getWindow())) {
@@ -451,10 +571,11 @@ int main(int argc, const char* argv[]) {
 
     initOpenGLState();
 
-    myScene.Load();
+    initObjects();
 
     initShaders();
     initUniforms();
+    initFBO();
     initSkyBox();
 
     initRain();
@@ -467,6 +588,10 @@ int main(int argc, const char* argv[]) {
 
 
     mainLoop();
+
+    glDeleteTextures(1, &depthMapTexture);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &shadowMapFBO);
 
     myWindow.Delete();
 
