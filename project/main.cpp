@@ -194,6 +194,18 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         glfwSetWindowShouldClose(window, GL_TRUE);
 
+    if (key == GLFW_KEY_K && action == GLFW_PRESS) {
+        glRenderMode = (glRenderMode + 1) % 3;
+        switch (glRenderMode) {
+        case 0: glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            break;
+        case 1: glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            break;
+        case 2: glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+            break;
+        }
+    }
+
     if (key == GLFW_KEY_R && action == GLFW_PRESS) {
         rainEnabled = !rainEnabled;
     }
