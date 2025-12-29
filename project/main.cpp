@@ -405,16 +405,11 @@ void initFBO() {
 }
 
 glm::mat4 computeLightSpaceTrMatrix() {
-    glm::vec3 lightViewTarget = glm::vec3(13.57f, 13.88f, 1.11f);
+    glm::mat4 lightView = myCamera.getViewMatrix();
 
-    glm::vec3 lightDirRotated = glm::inverseTranspose(glm::mat3(lightRotation)) * lightDir;
 
-    glm::vec3 lightEyePosition = lightViewTarget + glm::normalize(lightDirRotated) * 60.0f;
-
-    glm::mat4 lightView = glm::lookAt(lightEyePosition, lightViewTarget, glm::vec3(0.0f, 1.0f, 0.0f));
-
-    const GLfloat near_plane = 0.1f, far_plane = 200.0f;
-    const GLfloat projection_size = 40.0f;
+    const GLfloat near_plane = -20.0f, far_plane = 200.0f;
+    const GLfloat projection_size = 10.0f;
 
     glm::mat4 lightProjection = glm::ortho(-projection_size, projection_size, -projection_size, projection_size,
                                            near_plane, far_plane);
@@ -492,15 +487,13 @@ void renderScene() {
     glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
     glClear(GL_DEPTH_BUFFER_BIT);
 
-    glCullFace(GL_FRONT);
-
     glm::mat4 inverseView = glm::inverse(view);
     glm::vec3 cameraPosition = glm::vec3(inverseView[3]);
 
+    glDisable(GL_CULL_FACE);
     myPlayer.Draw(depthMapShader, cameraPosition, view);
-    myScene.Draw(depthMapShader);
+    glEnable(GL_CULL_FACE);
 
-    glCullFace(GL_BACK);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
