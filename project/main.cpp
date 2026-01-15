@@ -561,7 +561,7 @@ void renderScene() {
         drillModel = glm::mat4(1.0f);
         drillModel = glm::translate(drillModel, glm::vec3(35.9187f, 44.0378f, -25.3569f));
         drillModel = glm::rotate(drillModel, glm::radians(drillAngle), glm::vec3(0.0f, 1.0f, 0.0f));
-        drillModel = glm::scale(drillModel, glm::vec3(10.0f)); 
+        drillModel = glm::scale(drillModel, glm::vec3(10.0f));
 
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(drillModel));
         glm::mat3 drillNormalMatrix = glm::mat3(glm::inverseTranspose(view * drillModel));
