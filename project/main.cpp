@@ -57,6 +57,9 @@ gps::Model3D screenQuad;
 gps::Shader screenQuadShader;
 gps::Shader depthMapShader;
 
+gps::Model3D drill;
+float drillAngle = 0.0f;
+
 glm::vec3 lightDir;
 glm::mat4 lightRotation;
 GLfloat lightAngle;
@@ -473,9 +476,14 @@ void initObjects() {
     myScene.Load();
     myPlayer.Load("models/player/player.obj");
     screenQuad.LoadModel("models/quad.obj");
+
+    drill.LoadModel("models/drill/drill.obj");
 }
 
 void renderScene() {
+    drillAngle += 1.0f;
+    if (drillAngle > 360.0f) drillAngle -= 360.0f;
+
     depthMapShader.useShaderProgram();
 
     glUniformMatrix4fv(glGetUniformLocation(depthMapShader.shaderProgram, "lightSpaceTrMatrix"),
@@ -492,6 +500,15 @@ void renderScene() {
 
     glDisable(GL_CULL_FACE);
     myPlayer.Draw(depthMapShader, cameraPosition, view);
+
+    glm::mat4 drillModel = glm::mat4(1.0f);
+    drillModel = glm::translate(drillModel, glm::vec3(35.9187f, 44.0378f, -25.3569f));
+    drillModel = glm::rotate(drillModel, glm::radians(drillAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+    drillModel = glm::scale(drillModel, glm::vec3(10.0f)); // Scale added here
+    glUniformMatrix4fv(glGetUniformLocation(depthMapShader.shaderProgram, "model"), 1, GL_FALSE,
+                       glm::value_ptr(drillModel));
+    drill.Draw(depthMapShader);
+
     glEnable(GL_CULL_FACE);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -540,6 +557,18 @@ void renderScene() {
 
         myScene.UpdateLightPositions(myCustomShader, view);
         myScene.Draw(myCustomShader);
+
+        drillModel = glm::mat4(1.0f);
+        drillModel = glm::translate(drillModel, glm::vec3(35.9187f, 44.0378f, -25.3569f));
+        drillModel = glm::rotate(drillModel, glm::radians(drillAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+        drillModel = glm::scale(drillModel, glm::vec3(10.0f)); 
+
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(drillModel));
+        glm::mat3 drillNormalMatrix = glm::mat3(glm::inverseTranspose(view * drillModel));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(drillNormalMatrix));
+
+        drill.Draw(myCustomShader);
+
 
         mySkyBox.Draw(skyboxShader, view, projection);
 
