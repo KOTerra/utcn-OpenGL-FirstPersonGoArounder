@@ -75,6 +75,7 @@ gps::Shader rainShader;
 GLuint rainVAO, rainVBO;
 GLuint rainTexture;
 bool rainEnabled = false;
+bool chromaticAberrationEnabled = false;
 
 Scene myScene;
 Player myPlayer;
@@ -219,6 +220,10 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
 
     if (key == GLFW_KEY_R && action == GLFW_PRESS) {
         rainEnabled = !rainEnabled;
+    }
+
+    if (key == GLFW_KEY_I && action == GLFW_PRESS) {
+        chromaticAberrationEnabled = !chromaticAberrationEnabled;
     }
 
     if (key == GLFW_KEY_H && action == GLFW_PRESS) {
@@ -581,6 +586,8 @@ void renderScene() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         myCustomShader.useShaderProgram();
+
+        glUniform1f(glGetUniformLocation(myCustomShader.shaderProgram, "caStrength"), chromaticAberrationEnabled ? 0.0025f : 0.0f);
 
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 

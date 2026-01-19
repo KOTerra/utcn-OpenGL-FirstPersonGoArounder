@@ -24,6 +24,8 @@ uniform sampler2D diffuseTexture;
 uniform sampler2D specularTexture;
 uniform sampler2D shadowMap;
 
+uniform float caStrength;
+
 uniform float fogDensity = 0.003f;
 uniform vec4 fogColor = vec4(0.4f, 0.015f, 0.01f, 1.0f);
 
@@ -64,7 +66,13 @@ void computeLightComponents()
     vec3 cameraPosEye = vec3(0.0f);
     vec3 normal = normalize(fNormal);
     vec3 viewDirN = normalize(cameraPosEye - fPosEye.xyz);
-    vec3 texColor = texture(diffuseTexture, fragTexCoords).rgb;
+
+    //aberration
+    float r = texture(diffuseTexture, fragTexCoords + vec2(caStrength, 0.0)).r;
+    float g = texture(diffuseTexture, fragTexCoords).g;
+    float b = texture(diffuseTexture, fragTexCoords - vec2(caStrength, 0.0)).b;
+    vec3 texColor = vec3(r, g, b);
+
     float specularMap = texture(specularTexture, fragTexCoords).r;
 
     ambient = vec3(0.0f);
