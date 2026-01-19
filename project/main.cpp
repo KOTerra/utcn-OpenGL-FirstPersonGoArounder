@@ -34,6 +34,10 @@
 #include <vector>
 #include "stb_image.h"
 
+
+
+
+
 gps::Window myWindow;
 
 glm::mat4 model;
@@ -86,6 +90,10 @@ float cameraSpeed = BASE_CAMERA_SPEED;
 
 bool pressedKeys[1024];
 float angleY = 0.0f;
+
+bool orbitMode = false;
+float orbitAngle = 0.0f;
+float orbitRadius = 200.0f;
 
 gps::Shader myCustomShader;
 
@@ -213,6 +221,10 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
         rainEnabled = !rainEnabled;
     }
 
+    if (key == GLFW_KEY_H && action == GLFW_PRESS) {
+        orbitMode = !orbitMode;
+    }
+
     if (key == GLFW_KEY_M && action == GLFW_PRESS)
         showDepthMap = !showDepthMap;
 
@@ -233,6 +245,12 @@ float pitch = 0.0f;
 
 
 void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
+    if (orbitMode) {
+        lastX = xpos;
+        lastY = ypos;
+        return;
+    }
+
     if (firstMouse) {
         lastX = xpos;
         lastY = ypos;
@@ -328,31 +346,60 @@ void processMovement() {
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
     }
 
-    bool cameraMoved = false;
-    if (pressedKeys[GLFW_KEY_W]) {
-        myCamera.move(gps::MOVE_FORWARD, cameraSpeed);
-        cameraMoved = true;
-    }
-    if (pressedKeys[GLFW_KEY_S]) {
-        myCamera.move(gps::MOVE_BACKWARD, cameraSpeed);
-        cameraMoved = true;
-    }
-    if (pressedKeys[GLFW_KEY_A]) {
-        myCamera.move(gps::MOVE_LEFT, cameraSpeed);
-        cameraMoved = true;
-    }
-    if (pressedKeys[GLFW_KEY_D]) {
-        myCamera.move(gps::MOVE_RIGHT, cameraSpeed);
-        cameraMoved = true;
-    }
+    if (orbitMode) {
+        // Auto-Rotate
+        orbitAngle += 0.5f;
+        if (orbitAngle > 360.0f) orbitAngle -= 360.0f;
 
-    if (cameraMoved) {
-        view = myCamera.getViewMatrix();
+        // Zoom in/out
+        if (pressedKeys[GLFW_KEY_W]) orbitRadius -= 0.5f;
+        if (pressedKeys[GLFW_KEY_S]) orbitRadius += 0.5f;
+
+        if (orbitRadius < 5.0f) orbitRadius = 5.0f;
+
+        float camX = sin(glm::radians(orbitAngle)) * orbitRadius;
+        float camZ = cos(glm::radians(orbitAngle)) * orbitRadius;
+
+        // Orbit 0,10,0
+        glm::vec3 cameraPosition = glm::vec3(camX, 20.0f, camZ);
+        glm::vec3 targetPosition = glm::vec3(0.0f, 10.0f, 0.0f);
+
+        view = glm::lookAt(cameraPosition, targetPosition, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        //  uniforms for orbit view
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         normalMatrix = glm::mat3(glm::inverseTranspose(view * model));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
-
         myScene.UpdateLightPositions(myCustomShader, view);
+    }
+    else {
+        // Normal WASD
+        bool cameraMoved = false;
+        if (pressedKeys[GLFW_KEY_W]) {
+            myCamera.move(gps::MOVE_FORWARD, cameraSpeed);
+            cameraMoved = true;
+        }
+        if (pressedKeys[GLFW_KEY_S]) {
+            myCamera.move(gps::MOVE_BACKWARD, cameraSpeed);
+            cameraMoved = true;
+        }
+        if (pressedKeys[GLFW_KEY_A]) {
+            myCamera.move(gps::MOVE_LEFT, cameraSpeed);
+            cameraMoved = true;
+        }
+        if (pressedKeys[GLFW_KEY_D]) {
+            myCamera.move(gps::MOVE_RIGHT, cameraSpeed);
+            cameraMoved = true;
+        }
+
+        if (cameraMoved) {
+            view = myCamera.getViewMatrix();
+            glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+            normalMatrix = glm::mat3(glm::inverseTranspose(view * model));
+            glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
+
+            myScene.UpdateLightPositions(myCustomShader, view);
+        }
     }
 
     if (pressedKeys[GLFW_KEY_P]) {
@@ -504,7 +551,7 @@ void renderScene() {
     glm::mat4 drillModel = glm::mat4(1.0f);
     drillModel = glm::translate(drillModel, glm::vec3(35.9187f, 44.0378f, -25.3569f));
     drillModel = glm::rotate(drillModel, glm::radians(drillAngle), glm::vec3(0.0f, 1.0f, 0.0f));
-    drillModel = glm::scale(drillModel, glm::vec3(10.0f)); // Scale added here
+    drillModel = glm::scale(drillModel, glm::vec3(10.0f));
     glUniformMatrix4fv(glGetUniformLocation(depthMapShader.shaderProgram, "model"), 1, GL_FALSE,
                        glm::value_ptr(drillModel));
     drill.Draw(depthMapShader);
